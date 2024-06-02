@@ -1,154 +1,86 @@
-K = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+# Параметры SHA3-256
+HashLength = 32
+SHA3_WORD = 64  # Длина слова в битах
+SHA3_BLOCKSIZE = 1600  # Длина блока в битах
+SHA3_ROUND = 24  # Количество раундов
+
+c = HashLength * 8 * 2  # Capacity
+r = 1600 - c  # Bit rate
+
+# Константы для алгоритма
+MM1M5 = [4, 0, 1, 2, 3]
+MP1M5 = [1, 2, 3, 4, 0]
+M2XP3YM5 = [[0, 2, 4, 1, 3], [3, 0, 2, 4, 1], [1, 3, 0, 2, 4], [4, 1, 3, 0, 2], [2, 4, 1, 3, 0]]
+R = [
+    [0, 1, 62, 28, 27], [36, 44, 6, 55, 20], [3, 10, 43, 25, 39], [41, 45, 15, 21, 8], [18, 2, 61, 56, 14]
+]
+RC = [
+    0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000, 0x000000000000808B,
+    0x0000000080000001,
+    0x8000000080008081, 0x8000000000008009, 0x000000000000008A, 0x0000000000000088, 0x0000000080008009,
+    0x000000008000000A,
+    0x000000008000808B, 0x800000000000008B, 0x8000000000008089, 0x8000000000008003, 0x8000000000008002,
+    0x8000000000000080,
+    0x000000000000800A, 0x800000008000000A, 0x8000000080008081, 0x8000000000008080, 0x0000000080000001,
+    0x8000000080008008
 ]
 
 
-def generate_hash(message: bytearray) -> bytearray:
-    """Возвращает SHA-256 хэш для переданного сообщения."""
-    if isinstance(message, str):
-        message = bytearray(message, 'ascii')
-    elif isinstance(message, bytes):
-        message = bytearray(message)
-    elif not isinstance(message, bytearray):
-        raise TypeError
-
-    # Дополнение
-    length = len(message) * 8  # длина сообщения в битах
-    message.append(0x80)
-    while (len(message) * 8 + 64) % 512 != 0:
-        message.append(0x00)
-
-    message += length.to_bytes(8, 'big')  # дополнение до 8 байт или 64 бит
-
-    assert (len(message) * 8) % 512 == 0, "Дополнение выполнено неправильно!"
-
-    # Разбор
-    blocks = []  # содержит 512-битные куски сообщения
-    for i in range(0, len(message), 64):  # 64 байта это 512 бит
-        blocks.append(message[i:i + 64])
-
-    # Установка начальных значений хеша
-    h0 = 0x6a09e667
-    h1 = 0xbb67ae85
-    h2 = 0x3c6ef372
-    h3 = 0xa54ff53a
-    h4 = 0x510e527f
-    h5 = 0x9b05688c
-    h6 = 0x1f83d9ab
-    h7 = 0x5be0cd19
-
-    # Вычисление хеша SHA-256
-    for message_block in blocks:
-        # Подготовка расписания сообщений
-        message_schedule = []
-        for t in range(0, 64):
-            if t <= 15:
-                message_schedule.append(bytes(message_block[t * 4:(t * 4) + 4]))
-            else:
-                term1 = _sigma1(int.from_bytes(message_schedule[t - 2], 'big'))
-                term2 = int.from_bytes(message_schedule[t - 7], 'big')
-                term3 = _sigma0(int.from_bytes(message_schedule[t - 15], 'big'))
-                term4 = int.from_bytes(message_schedule[t - 16], 'big')
-
-                schedule = ((term1 + term2 + term3 + term4) % 2 ** 32).to_bytes(4, 'big')
-                message_schedule.append(schedule)
-
-        assert len(message_schedule) == 64
-
-        # Инициализация рабочих переменных
-        a = h0
-        b = h1
-        c = h2
-        d = h3
-        e = h4
-        f = h5
-        g = h6
-        h = h7
-
-        # Итерация от t=0 до 63
-        for t in range(64):
-            t1 = ((h + _capsigma1(e) + _ch(e, f, g) + K[t] +
-                   int.from_bytes(message_schedule[t], 'big')) % 2 ** 32)
-
-            t2 = (_capsigma0(a) + _maj(a, b, c)) % 2 ** 32
-
-            h = g
-            g = f
-            f = e
-            e = (d + t1) % 2 ** 32
-            d = c
-            c = b
-            b = a
-            a = (t1 + t2) % 2 ** 32
-
-        # Вычисление промежуточного значения хеша
-        h0 = (h0 + a) % 2 ** 32
-        h1 = (h1 + b) % 2 ** 32
-        h2 = (h2 + c) % 2 ** 32
-        h3 = (h3 + d) % 2 ** 32
-        h4 = (h4 + e) % 2 ** 32
-        h5 = (h5 + f) % 2 ** 32
-        h6 = (h6 + g) % 2 ** 32
-        h7 = (h7 + h) % 2 ** 32
-
-    return ((h0).to_bytes(4, 'big') + (h1).to_bytes(4, 'big') +
-            (h2).to_bytes(4, 'big') + (h3).to_bytes(4, 'big') +
-            (h4).to_bytes(4, 'big') + (h5).to_bytes(4, 'big') +
-            (h6).to_bytes(4, 'big') + (h7).to_bytes(4, 'big'))
+def ROT(val, r_bits):
+    return ((val << r_bits) & ((1 << 64) - 1)) | (val >> (64 - r_bits))
 
 
-def _sigma0(num: int):
-    """Как определено в спецификации."""
-    return _rotate_right(num, 7) ^ _rotate_right(num, 18) ^ (num >> 3)
+def Round(A):
+    for rnd in range(SHA3_ROUND):
+        C = [A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20] for x in range(5)]
+        D = [C[x] ^ ROT(C[MP1M5[x]], 1) for x in range(5)]
+        A = [(A[x] ^ D[x % 5]) for x in range(25)]
+
+        B = [0] * 25
+        for x in range(5):
+            for y in range(5):
+                B[y * 5 + M2XP3YM5[x][y]] = ROT(A[x * 5 + y], R[x][y])
+
+        for x in range(5):
+            for y in range(5):
+                A[x * 5 + y] = B[x * 5 + y] ^ ((~B[MP1M5[x] * 5 + y]) & B[MP1M5[MP1M5[x]] * 5 + y])
+
+        A[0] ^= RC[rnd]
+
+    return A
 
 
-def _sigma1(num: int):
-    """Как определено в спецификации."""
-    return _rotate_right(num, 17) ^ _rotate_right(num, 19) ^ (num >> 10)
+def Keccak(message, r, c):
+    message = int.from_bytes(message, 'big') << 1 | 1
+    padded_length = ((len(message.to_bytes((message.bit_length() + 7) // 8, 'big')) * 8 + r - 1) // r) * r
+    message = message << (padded_length - message.bit_length())
+    message <<= r - 1
+    message |= 1
 
+    n = padded_length // r
+    state = [0] * 25
 
-def _capsigma0(num: int):
-    """Как определено в спецификации."""
-    return _rotate_right(num, 2) ^ _rotate_right(num, 13) ^ _rotate_right(num, 22)
+    for i in range(n):
+        block = (message >> (r * (n - 1 - i))) & ((1 << r) - 1)
+        for j in range(r // 64):
+            state[j] ^= (block >> (64 * j)) & 0xFFFFFFFFFFFFFFFF
+        state = Round(state)
 
+    hash_val = 0
+    for i in range(c // 64):
+        hash_val |= (state[i] & 0xFFFFFFFFFFFFFFFF) << (64 * i)
 
-def _capsigma1(num: int):
-    """Как определено в спецификации."""
-    return _rotate_right(num, 6) ^ _rotate_right(num, 11) ^ _rotate_right(num, 25)
-
-
-def _ch(x: int, y: int, z: int):
-    """Как определено в спецификации."""
-    return (x & y) ^ (~x & z)
-
-
-def _maj(x: int, y: int, z: int):
-    """Как определено в спецификации."""
-    return (x & y) ^ (x & z) ^ (y & z)
-
-
-def _rotate_right(num: int, shift: int, size: int = 32):
-    """Циклический сдвиг числа вправо."""
-    return (num >> shift) | (num << (size - shift)) & (2 ** size - 1)
+    return hash_val.to_bytes(c // 8, 'big')
 
 
 def hash_file(path):
-    """Функция для хэширования файла с использованием SHA-256."""
     with open(path, 'rb') as file:
         data = file.read()
-        hash_val = generate_hash(data)
-        return hash_val.hex()
+    hash_val = Keccak(data, r, c)
+    return hash_val.hex()
 
 
 def save_file(hash_val, output_path):
-    """Функция для сохранения хэш-значения в файл."""
     with open(output_path, 'w') as file:
         file.write(hash_val)
 
@@ -157,7 +89,6 @@ if __name__ == "__main__":
     input_file = "input.txt"
     output_file = "output_hash.txt"
 
-    # Выполняем хэширование и сохраняем результат
     hash_val = hash_file(input_file)
     save_file(hash_val, output_file)
 
