@@ -1,4 +1,3 @@
-# Параметры SHA3-256
 HashLength = 32
 SHA3_WORD = 64  # Длина слова в битах
 SHA3_BLOCKSIZE = 1600  # Длина блока в битах
@@ -50,27 +49,30 @@ def Round(A):
     return A
 
 
-def Keccak(message, r, c):
-    message = int.from_bytes(message, 'big') << 1 | 1
-    padded_length = ((len(message.to_bytes((message.bit_length() + 7) // 8, 'big')) * 8 + r - 1) // r) * r
-    message = message << (padded_length - message.bit_length())
-    message <<= r - 1
-    message |= 1
+def pad10star1(message, r):
+    padding = [0] * ((r - len(message) % r) // 8)
+    padding[0] = 0x01
+    padding[-1] |= 0x80
+    return message + bytes(padding)
 
-    n = padded_length // r
+
+def Keccak(message, r, c):
+    message = pad10star1(message, r)
+    n = len(message) * 8 // r
     state = [0] * 25
 
     for i in range(n):
-        block = (message >> (r * (n - 1 - i))) & ((1 << r) - 1)
+        block = int.from_bytes(message[i * (r // 8):(i + 1) * (r // 8)], 'little')
         for j in range(r // 64):
             state[j] ^= (block >> (64 * j)) & 0xFFFFFFFFFFFFFFFF
         state = Round(state)
 
-    hash_val = 0
-    for i in range(c // 64):
-        hash_val |= (state[i] & 0xFFFFFFFFFFFFFFFF) << (64 * i)
+    hash_val = b''
+    while len(hash_val) * 8 < c:
+        hash_val += (state[0] & 0xFFFFFFFFFFFFFFFF).to_bytes(8, 'little')
+        state = Round(state)
 
-    return hash_val.to_bytes(c // 8, 'big')
+    return hash_val[:c // 8]
 
 
 def hash_file(path):
